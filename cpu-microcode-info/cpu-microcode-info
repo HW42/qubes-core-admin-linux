@@ -1,0 +1,76 @@
+#!/usr/bin/python3
+
+import os
+import sys
+import struct
+
+def ee(msg):
+    print(msg)
+    sys.exit(1)
+
+def open_checked(*args):
+    try:
+        return open(*args)
+    except OSError as exc:
+        ee('Failed to open {}: {}'.format(args[0], exc))
+
+if os.getuid() != 0:
+    ee('Root rights required to read all CPU infos!')
+
+cpuinfo = open_checked('/proc/cpuinfo')
+cpus = {}
+num = None
+while True:
+    line = cpuinfo.readline()
+    if not line:
+        break
+
+    if line == '\n':
+        num = None
+        continue
+
+    name, value = [i.strip() for i in line.split(':', 2)]
+
+    if name == 'processor':
+        num = int(value)
+        cpus[num] = {}
+        continue
+
+    if num is None:
+        ee('Failed to parse cpuinfo: missing processor number')
+
+    if name in ['cpu family', 'model', 'stepping']:
+        cpus[num][name] = int(value)
+    elif name in ['microcode']:
+        cpus[num][name] = int(value, 16)
+
+cpuinfo.close()
+
+for num in cpus:
+    # Logic extracted from Linux
+    # https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/x86/kernel/cpu/microcode/intel.c?h=v5.19-rc2#n691
+    platform_id = 0
+    if cpus[num]['model'] >= 5 or cpus[num]['cpu family'] > 6:
+        msr = open_checked('/dev/cpu/{}/msr'.format(num), 'rb')
+        msr.seek(0x17)
+        msr_0x17 = msr.read(8)
+        if len(msr_0x17) != 8:
+            ee('Failed to read MSR 0x17: Incomplete read')
+        msr_0x17 = struct.unpack('<Q', msr_0x17)[0]
+        platform_id = 1 << ((msr_0x17 >> 50) & 0b111)
+        msr.close()
+
+    cpus[num]['platform id'] = platform_id
+
+print('CPU  F-M-S/PI     Loaded microcode version')
+#        1  aa-bb-cc/dd  00112233
+for num in cpus:
+    cpu = cpus[num]
+    line = '{:3}  {:02x}-{:02x}-{:02x}/{:02x}  {:08x}'.format(
+        num,
+        cpu['cpu family'],
+        cpu['model'],
+        cpu['stepping'],
+        cpu['platform id'],
+        cpu['microcode'])
+    print(line)

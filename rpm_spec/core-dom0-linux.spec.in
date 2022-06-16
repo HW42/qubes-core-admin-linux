@@ -187,6 +187,9 @@ install -D vaio-fixes/99sony-vaio-audio $RPM_BUILD_ROOT/usr/lib64/pm-utils/sleep
 mkdir -p $RPM_BUILD_ROOT/etc/modprobe.d/
 install -m 0644 -D -- vaio-fixes/snd-hda-intel-sony-vaio.conf "$RPM_BUILD_ROOT/etc/modprobe.d/"
 
+# cpu-microcode-info
+install -m 755 cpu-microcode-info/cpu-microcode-info $RPM_BUILD_ROOT/usr/bin/
+
 %pre
 if ! grep -q ^qubes: /etc/group ; then
 		groupadd qubes
